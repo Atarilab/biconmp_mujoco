@@ -14,7 +14,7 @@ This project uses VS Code devcontainer. To run this workspace, please first inst
 After that is done, clone this repository onto your developement PC.
 
 ```bash
-git clone ...
+git clone --recurse-submodules https://github.com/Atarilab/biconmp_mujoco.git
 ```
 
 Then, enter the directory downloaded and open it in vscode
@@ -32,6 +32,8 @@ The environment is set up automatically with [BiConMP](https://github.com/machin
 ## Wrapper interface
 
 This repo provides a wrapper to interface [MuJoCo](https://mujoco.org/) for the simulation environment and [Pinocchio](https://gepettoweb.laas.fr/doc/stack-of-tasks/pinocchio/master/doxygen-html/) used by [BiConMP](https://github.com/machines-in-motion/biconvex_mpc). The source code is in `project/example/mj_pin_wrapper`.
+
+The wrapper is imported as a **submodule** in the project from this [repository](https://github.com/Atarilab/mj_pin_wrapper.git).
 
 #### Pinocchio + MuJoCo interface
 
