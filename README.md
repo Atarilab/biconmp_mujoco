@@ -67,7 +67,7 @@ Implements the **robot controller or policy**. The following method should be in
     It should return  the torques for each actuator as a map {joint name : $\tau$}. One can find the joint names the `RobotWrapperAbstract`.
 
     See [`BiConMPC`](project/example/mpc_controller/bicon_mpc.py) for exemple of inheritance.
-<br>
+
 2. [`DataRecorderAbstract`](project/example/mj_pin_wrapper/abstract/controller.py)
 Implements a class to **record the data from the simulation**. The following method should be inherited.
     - `record(q, v, robot_data)`
