@@ -1,0 +1,3 @@
+[submodule "project/example/mj_pin_wrapper"]
+	path = project/example/mj_pin_wrapper
+	url = git@github.com:Atarilab/mj_pin_wrapper.git
