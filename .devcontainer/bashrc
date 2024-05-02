@@ -6,4 +6,4 @@ export PYTHONPATH=/opt/openrobots/lib/python3.10/site-packages:$PYTHONPATH  # Wa
 export CPLUS_INCLUDE_PATH=/opt/openrobots/include/:$CPLUS_INCLUDE_PATH
 
 export PYTHONPATH=/home/atari_ws/project/build:$PYTHONPATH
-export PYTHONPATH=/home/atari_ws/project/scripts:$PYTHONPATH
+export PYTHONPATH=/home/atari_ws/project:$PYTHONPATH

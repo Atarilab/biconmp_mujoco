@@ -45,3 +45,4 @@ if [ -d "/home/atari_ws/project" ]; then
         echo "${GREEN}Succesfully build project${NC}"
         
     fi
+fi
