@@ -52,9 +52,11 @@ target_include_directories(
     ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            )
 
+# Install shared library
 install(
-TARGETS ${PROJECT_NAME}
-DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
+    TARGETS ${PROJECT_NAME}
+    LIBRARY DESTINATION lib # or bin, depending on your preference
+)
 
 if ( OsqpEigen_FOUND )
     target_link_libraries(${PROJECT_NAME} OsqpEigen::OsqpEigen)
@@ -75,7 +77,8 @@ target_include_directories(gait_planner_cpp PRIVATE ${EIGEN3_INCLUDE_DIR})
 #target_link_directories(gait_planner_cpp PRIVATE pybind11::module)
 target_link_libraries(gait_planner_cpp PRIVATE biconvex_mpc)
 
-#Install PyBind library
-install(TARGETS biconvex_mpc_cpp DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
-install(TARGETS inverse_kinematics_cpp LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
-install(TARGETS gait_planner_cpp LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
+# Optionally install the Python modules (modify as needed)
+install(
+    TARGETS inverse_kinematics_cpp gait_planner_cpp biconvex_mpc_cpp
+    LIBRARY DESTINATION lib # or bin, depending on your preference
+)

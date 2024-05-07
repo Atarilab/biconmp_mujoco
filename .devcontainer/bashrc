@@ -5,5 +5,4 @@ export LD_LIBRARY_PATH=/opt/openrobots/lib:$LD_LIBRARY_PATH
 export PYTHONPATH=/opt/openrobots/lib/python3.10/site-packages:$PYTHONPATH  # Watchout for Python version!! 
 export CPLUS_INCLUDE_PATH=/opt/openrobots/include/:$CPLUS_INCLUDE_PATH
 
-export PYTHONPATH=/home/atari_ws/project/build:$PYTHONPATH
-export PYTHONPATH=/home/atari_ws/project:$PYTHONPATH
+export PYTHONPATH=/home/atari_ws/biconvex_mpc/build:$PYTHONPATH

@@ -85,7 +85,7 @@
 
 	"todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|^\\s*(-|\\d+.))\\s*($TAGS).*(\\n\\s*//\\s{2,}.*)*",
 	"cmake.configureOnOpen": true,
-	"cmake.sourceDirectory": "/home/atari_ws/project",
+	"cmake.sourceDirectory": "/home/atari_ws/biconvex_mpc",
 
 }
 
