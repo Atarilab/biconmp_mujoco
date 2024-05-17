@@ -42,6 +42,5 @@
     ],
     // Post create command - dependency check and permission for read write for workspace folder
     // "postStartCommand": "",
-    "postAttachCommand": "cd /home/atari_ws && sudo bash /build_packages.sh"
+    "postAttachCommand": ". /home/atari/.bashrc"
 }
-    

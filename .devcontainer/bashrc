@@ -1,8 +1,0 @@
-export PATH=/opt/openrobots/bin:$PATH
-export CMAKE_PREFIX_PATH=/opt/openrobots:$CMAKE_PREFIX_PATH
-export PKG_CONFIG_PATH=/opt/openrobots/lib/pkgconfig:$PKG_CONFIG_PATH
-export LD_LIBRARY_PATH=/opt/openrobots/lib:$LD_LIBRARY_PATH
-export PYTHONPATH=/opt/openrobots/lib/python3.10/site-packages:$PYTHONPATH  # Watchout for Python version!! 
-export CPLUS_INCLUDE_PATH=/opt/openrobots/include/:$CPLUS_INCLUDE_PATH
-
-export PYTHONPATH=/home/atari_ws/biconvex_mpc/build:$PYTHONPATH

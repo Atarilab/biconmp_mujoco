@@ -61,7 +61,6 @@ RUN sudo apt-get update \
   libeigen3-dev \
   && rm -rf /var/lib/apt/lists/*
 
-
 # Pybind11 global
 RUN pip install pybind11[global]
 
@@ -80,7 +79,6 @@ deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.asc] http://robotpkg.openro
 EOF
 RUN sudo apt-get update
 
-
 # manually install crocoddyl 1.9.0 and its dependencies
 RUN sudo apt-get update \
   && sudo apt-get install -y \
@@ -91,15 +89,42 @@ RUN sudo apt-get update \
   robotpkg-py310-crocoddyl=1.9.0 \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy the entrypoint and bashrc scripts so we have 
-# our container's environment set up correctly
-COPY build_packages.sh /build_packages.sh
-COPY bashrc /home/${USERNAME}/.bashrc
+RUN echo 'export PATH=/opt/openrobots/bin:$PATH' >> /root/.bashrc
+RUN echo 'export CMAKE_PREFIX_PATH=/opt/openrobots:$CMAKE_PREFIX_PATH' >> /root/.bashrc
+RUN echo 'export PKG_CONFIG_PATH=/opt/openrobots/lib/pkgconfig:$PKG_CONFIG_PATH' >> /root/.bashrc
+RUN echo 'export LD_LIBRARY_PATH=/opt/openrobots/lib:$LD_LIBRARY_PATH' >> /root/.bashrc
+RUN echo 'export PYTHONPATH=/opt/openrobots/lib/python3.10/site-packages:$PYTHONPATH' >> /root/.bashrc   # Watchout for Python version!! 
+RUN echo 'export export CPLUS_INCLUDE_PATH=/opt/openrobots/include/:$CPLUS_INCLUDE_PATH' >> /root/.bashrc
 
-# Set up entrypoint and default command
-#ENTRYPOINT ["/bin/bash", "/build_dependencies.sh"]
+SHELL ["/bin/bash", "-c"]
+RUN echo 'export PS1="\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;37m\]\u\[\033[00m\]@\[\033[01;32m\]\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\] "'  >> /root/.bashrc
+RUN source /root/.bashrc
 
-CMD ["bash"]
+# Install BiConMP
+RUN git clone --recurse-submodules -j12 https://github.com/machines-in-motion/biconvex_mpc.git
 
+COPY biconmpc_fix.py .
+RUN python3 biconmpc_fix.py
+RUN rm biconmpc_fix.py
+
+RUN cd biconvex_mpc && mkdir -p build
+RUN source /root/.bashrc && cd biconvex_mpc/build && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/openrobots
+RUN cd biconvex_mpc/build && make install -j16
+
+RUN echo 'export PYTHONPATH=/biconvex_mpc/build:$PYTHONPATH' >> /root/.bashrc
+
+ENV DEBIAN_FRONTEND=noninteractive
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES \
+    ${NVIDIA_VISIBLE_DEVICES:-all}
+ENV NVIDIA_DRIVER_CAPABILITIES \
+    ${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
+ 
 # Good practice
 USER root
+
+# Set the working directory and source the bashrc file
+RUN source /root/.bashrc
+RUN cat /root/.bashrc >> /home/$USERNAME/.bashrc
+
+CMD ["bash"]
