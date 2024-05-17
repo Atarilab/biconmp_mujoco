@@ -138,8 +138,8 @@ class BiConMPC(ControllerAbstract):
                 self.w_des,
                 cnt_plan_des=self.contact_plan_des)
 
-            pr_et = time.time()
-
+            pr_et = time.time() - pr_st
+        
         # Second loop onwards lag is taken into account
         if (
             self.step > 0 and

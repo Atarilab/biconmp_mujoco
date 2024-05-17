@@ -58,7 +58,7 @@ bound.state_wt = np.array(
     )
 
 ### Control
-bound.ctrl_wt = (
+bound.ctrl_wt = np.array(
     # force (x, y, z)
     [0.5, 0.5, 1e3] +
     # moment at base (x, y, z)                    
@@ -68,22 +68,22 @@ bound.ctrl_wt = (
     )
 
 ### Tracking swing end effectors (same for all end effectors swinging)
-bound.swing_wt = [
+bound.swing_wt = np.array(
     # position (x, y, z)
-    3*[1e4,],
+    3*[1e4,] +
     # velocities (x, y, z)                         
     3*[1e4,]                                
-    ]
+    )
 
 ### Centroidal
-bound.cent_wt = [
+bound.cent_wt = np.array(
     # center of mass (x, y, z)
-    3*[5.0e1,],
+    3*[5.0e1,] +
     # linear momentum of CoM (x, y, z)                            
     3*[5.0e2,] +
     # angular momentum around CoM (x, y, z)                             
     3*[5.0e2,]                               
-    ]
+    )
 
 ### Regularization, scale state_wt and ctrl_wt
 bound.reg_wt = [

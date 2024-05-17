@@ -11,14 +11,14 @@ from gait_planner_cpp import GaitPlanner
 from matplotlib import pyplot as plt
 
 from mj_pin_wrapper.abstract.robot import QuadrupedWrapperAbstract
-from motions.weight_abstract import ACyclicMotionParams
+from motions.weight_abstract import BiconvexMotionParams
 
 class CyclicQuadrupedGaitGen:
     GRAVITY = 9.81
 
     def __init__(self,
                  robot: QuadrupedWrapperAbstract,
-                 gait_params: ACyclicMotionParams,
+                 gait_params: BiconvexMotionParams,
                  planning_time: float,
                  ) -> None:
         """
@@ -60,7 +60,10 @@ class CyclicQuadrupedGaitGen:
         self.offsets = np.round(
             ((robot.get_pin_thigh_position_world() - com_init) @ R),
             3)
-
+        OFFSET = 0.03
+        self.offsets[:, 0] += np.array([-OFFSET, -OFFSET, OFFSET, OFFSET])
+        self.offsets[:, 1] += np.array([OFFSET, -OFFSET, OFFSET, -OFFSET])
+        
         # --- Set up Dynamics ---
         self.mass = pin.computeTotalMass(self.rmodel)
 
@@ -101,8 +104,8 @@ class CyclicQuadrupedGaitGen:
 
         # kino dyn
         self.kd = KinoDynMP(self.path_urdf, self.mass, self.n_eeff, self.horizon, self.ik_horizon)
-        self.kd.set_com_tracking_weight(self.params.cent_wt[0])
-        self.kd.set_mom_tracking_weight(self.params.cent_wt[1])
+        self.kd.set_com_tracking_weight(self.params.cent_wt[:3])
+        self.kd.set_mom_tracking_weight(self.params.cent_wt[3:])
         
         self.ik = self.kd.return_ik()
         self.mp = self.kd.return_dyn()
@@ -122,7 +125,6 @@ class CyclicQuadrupedGaitGen:
         if self.planning_time > self.params.gait_dt:
             self.size -= 1
 
-            
     def create_cnt_plan(self, q, v, t, v_des, w_des):
         
         com = np.round(pin.centerOfMass(self.rmodel, self.rdata, q, v)[0:2], 3)
@@ -134,7 +136,7 @@ class CyclicQuadrupedGaitGen:
         
         # This array determines when the swing foot cost should be enforced in the ik
         self.swing_time = np.zeros((self.horizon, self.n_eeff))
-        self.curr_cnt = np.zeros(self.n_eeff)
+
         # Contact Plan Matrix: horizon x num_eef x 4: The '4' gives the contact plan and location:
         # i.e. the last vector should be [1/0, x, y, z] where 1/0 gives a boolean for contact (1 = contact, 0 = no cnt)
 
@@ -147,8 +149,7 @@ class CyclicQuadrupedGaitGen:
         
         # Set roll and pitch to 0.
         rpy_vector = pin.rpy.matrixToRpy(R)
-        rpy_vector[0] = 0.0
-        rpy_vector[1] = 0.0
+        rpy_vector[:2] = 0.0  # Set roll and pitch to 0
         R = pin.rpy.rpyToMatrix(rpy_vector)
         
         for i in range(self.horizon):
@@ -193,25 +194,26 @@ class CyclicQuadrupedGaitGen:
                     else:
                         #If foot will not be in contact
                         self.cnt_plan[i][j][0] = 0
-                        per_ph = np.round(self.gait_planner.get_percent_in_phase(ft, j), 3)
+                        phase_percent = np.round(self.gait_planner.get_percent_in_phase(ft, j), 3)
                         hip_loc = com + np.matmul(R,self.offsets[j])[0:2] + i*self.params.gait_dt*vtrack
                         ang_step = 0.5*np.sqrt(z_height/CyclicQuadrupedGaitGen.GRAVITY)*vtrack
                         ang_step = np.cross(ang_step, [0.0, 0.0, w_des])
                         
-                        if per_ph < 0.5:
+                        if phase_percent < 0.5:
                             self.cnt_plan[i][j][1:3] = hip_loc + ang_step[0:2]
                         else:
                             raibert_step = 0.5*vtrack*self.params.gait_period*self.params.stance_percent[j] - 0.05*(vtrack - v_des[0:2])
                             self.cnt_plan[i][j][1:3] = hip_loc + ang_step[0:2]
 
+                        self.cnt_plan[i][j][3] = self.foot_size
+                        
                         #What is this?
-                        if per_ph - 0.5 < 0.02:
+                        if phase_percent - 0.5 < 0.05:
                             self.swing_time[i][j] = 1
+                            self.cnt_plan[i][j][-1] = self.params.step_ht
 
                         if self.height_map != None:
-                            self.cnt_plan[i][j][3] = self.height_map.getHeight(self.cnt_plan[i][j][1], self.cnt_plan[i][j][2])
-                        
-                        self.cnt_plan[i][j][3] = self.foot_size
+                            self.cnt_plan[i][j][3] = self.height_map.getHeight(self.cnt_plan[i][j][1], self.cnt_plan[i][j][2])                        
                     
             if i == 0:
                 dt = self.params.gait_dt - np.round(np.remainder(t,self.params.gait_dt),2)
@@ -221,8 +223,6 @@ class CyclicQuadrupedGaitGen:
                 dt = self.params.gait_dt
             self.mp.set_contact_plan(self.cnt_plan[i], dt)
             self.dt_arr[i] = dt
-
-        return self.cnt_plan
     
     def follow_contact_plan(self, q:np.array, time:float, cnt_plan_des_world:list):
         """
@@ -237,40 +237,47 @@ class CyclicQuadrupedGaitGen:
         """
         # This array determines when the swing foot cost should be enforced in the ik
         self.swing_time = np.zeros((self.horizon, self.n_eeff))
-        self.curr_cnt = np.zeros(self.n_eeff)
+
         cnt_plan_des_world = np.array(cnt_plan_des_world)
 
         # Contact Plan Matrix: horizon x num_eef x 4: The '4' gives the contact plan and location:
         # i.e. the last vector should be [1/0, x, y, z] where 1/0 gives a boolean for contact (1 = contact, 0 = no cnt)
 
         # R base in world frame
-        w_R_b = pin.Quaternion(np.array(q[3:7])).toRotationMatrix()
+        w_T_b = pin.XYZQUATToSE3(q[:7])
+        w_R_b = w_T_b.rotation
         # Set roll and pitch to 0.
         rpy_vector = pin.rpy.matrixToRpy(w_R_b)
-        rpy_vector[0] = 0.0
-        rpy_vector[1] = 0.0
+        rpy_vector[:2] = 0.0  # Set roll and pitch to 0
         # R world in base frame
-        b_R_w = pin.rpy.rpyToMatrix(rpy_vector).T
+        w_R_b = pin.rpy.rpyToMatrix(rpy_vector)
+        w_T_b.rotation = w_R_b
+        
+        b_T_W = w_T_b.inverse()
+        
 
         # If custom contact plan is given
         if len(cnt_plan_des_world) >= self.horizon:
             for i in range(self.horizon):
                 for j in range(self.n_eeff):
-                    b_pos_contact = b_R_w @ cnt_plan_des_world[i][j]
+                    b_pos_contact = b_T_W * cnt_plan_des_world[i][j]
                     b_pos_contact[-1] = cnt_plan_des_world[i][j][-1] + self.foot_size
              
                     # First time step
                     if i == 0:
-                        self.cnt_plan[i][j][1:4] = b_pos_contact
                         # Contact
                         if self.gait_planner.get_phase(time, j) == 1:
                             self.cnt_plan[i][j][0] = 1
+                            self.cnt_plan[i][j][1:4] = self.rdata.oMf[self.eeff_frame_id[j]].translation
+
+                        # No contact
                         else:
                             self.cnt_plan[i][j][0] = 0
-                    
+                            self.cnt_plan[i][j][1:4] = self.rdata.oMf[self.eeff_frame_id[j]].translation
+                        
                     # Next time steps
                     else:
-                        ft = np.round(time + i*self.params.gait_dt, 3)
+                        ft = time + i * self.params.gait_dt
 
                         # Contact
                         if self.gait_planner.get_phase(ft, j) == 1:
@@ -286,12 +293,12 @@ class CyclicQuadrupedGaitGen:
                         # No contact
                         else:
                             self.cnt_plan[i][j][0] = 0                
-                            #What is this?
-                            per_ph = np.round(self.gait_planner.get_percent_in_phase(ft, j), 3)
-                            if np.abs(per_ph - 0.5) < 0.02:
-                                self.swing_time[i][j] = 1
-                                
                             self.cnt_plan[i][j][1:4] = b_pos_contact
+                            
+                            phase_percent = self.gait_planner.get_percent_in_phase(ft, j)
+                            if phase_percent < 0.55:
+                                self.swing_time[i][j] = 1
+                                self.cnt_plan[i][j][-1] = self.params.step_ht
                             
                 if i == 0:
                     dt = self.params.gait_dt - np.round(np.remainder(time,self.params.gait_dt),2)
@@ -318,14 +325,12 @@ class CyclicQuadrupedGaitGen:
         for i in range(self.ik_horizon):
             for j in range(self.n_eeff):
                 if self.cnt_plan[i][j][0] == 1:
-                    self.ik.add_position_tracking_task_single(self.eeff_frame_id[j], self.cnt_plan[i][j][1:4], self.params.swing_wt[0],
+                    self.ik.add_position_tracking_task_single(self.eeff_frame_id[j], self.cnt_plan[i][j][1:4], self.params.swing_wt[:3],
                                                               "cnt_" + str(0) + self.eeff_names[j], i)
                 elif self.swing_time[i][j] == 1:
-                    pos = self.cnt_plan[i][j][1:4].copy()
-                    pos[2] = self.params.step_ht
-                    self.ik.add_position_tracking_task_single(self.eeff_frame_id[j], pos, self.params.swing_wt[1],
+                    self.ik.add_position_tracking_task_single(self.eeff_frame_id[j], self.cnt_plan[i][j][1:4], self.params.swing_wt[3:],
                                                               "via_" + str(0) + self.eeff_names[j], i)
-
+        
         self.ik.add_state_regularization_cost(0, self.ik_horizon, self.params.reg_wt[0], "xReg", self.params.state_wt, self.x_reg, False)
         self.ik.add_ctrl_regularization_cost(0, self.ik_horizon, self.params.reg_wt[1], "uReg", self.params.ctrl_wt, np.zeros(self.rmodel.nv), False)
 

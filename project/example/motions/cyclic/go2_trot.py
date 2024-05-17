@@ -26,9 +26,9 @@ trot.gait_dt = 0.05
 # Gait offset between legs [0,1] [FR, FL, RR, RL]
 trot.phase_offset = [0., 0.5, 0.5, 0.]
 # Gait step height
-trot.step_ht = 0.05
+trot.step_ht = 0.1
 # Gait mean/nominal height
-trot.nom_ht = 0.3
+trot.nom_ht = 0.32
 
 # Gains toque controller
 trot.kp = 20.5
@@ -58,7 +58,7 @@ trot.state_wt = np.array(
     )
 
 ### Control
-trot.ctrl_wt = (
+trot.ctrl_wt = np.array(
     # force (x, y, z)
     [0., 0., 1e3] +
     # moment at base (x, y, z)                    
@@ -68,22 +68,22 @@ trot.ctrl_wt = (
     )
 
 ### Tracking swing end effectors (same for all end effectors swinging)
-trot.swing_wt = [
-    # position (x, y, z)
-    3*[1e4,],
-    # velocities (x, y, z)                         
-    3*[1e4,]                                
-    ]
+trot.swing_wt = np.array(
+    # contact (x, y, z)
+    [1.1e4, 1.1e4, 2e3,] +
+    # swing (x, y, z)   
+    [5e3, 5e3, 1e4,]
+    )
 
 ### Centroidal
-trot.cent_wt = [
+trot.cent_wt = np.array(
     # center of mass (x, y, z)
-    3*[0.,],
+    3*[0.,] +
     # linear momentum of CoM (x, y, z)                            
     3*[5.0e2,] +
     # angular momentum around CoM (x, y, z)                             
     3*[5.0e2,]                               
-    ]
+    )
 
 ### Regularization, scale state_wt and ctrl_wt
 trot.reg_wt = [
