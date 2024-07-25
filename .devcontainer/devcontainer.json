@@ -1,6 +1,6 @@
 {
     "name": "ATARI Container",  // Name of container
-    "privileged": false,  // Privileged is used by a lot of people, but its also gives docker too much access. Solve by device and bind-mounts
+    "privileged": true,  // Privileged is used by a lot of people, but its also gives docker too much access. Solve by device and bind-mounts
     "remoteUser": "atari",  // name of remote user
     "build": {
         "dockerfile": "Dockerfile",  // Define Dockerfile
@@ -29,16 +29,24 @@
         }
     },
     "containerEnv": {
-        "DISPLAY": "unix:0"  // define display port for interfaces
+        "DISPLAY": "${localEnv:DISPLAY}"  // define display port for interfaces
         // "ROS_LOCALHOST_ONLY": "0",  // commented out to enable connection to local host (interesting for hardware deployment)
         // "ROS_DOMAIN_ID": "42"
     },
     "runArgs": [  // Run arguments
-        "-e",
-        "DISPLAY=${env:DISPLAY}"
+    // "-e", "DISPLAY="
+    // $DISPLAY,
+    // "--env", "DISPLAY=$DISPLAY",
+    "--env", "LIBGL_ALWAYS_INDIRECT=0",
+    "--net=host",
+    "--ipc=host",
+    "--runtime=nvidia",
+    "--gpus",
+    "all"
     ],
     "mounts": [  // other mounts
-       "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached"
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+        "source=/dev/dri,target=/dev/dri,type=bind"
     ],
     // Post create command - dependency check and permission for read write for workspace folder
     // "postStartCommand": "",

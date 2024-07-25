@@ -113,6 +113,9 @@ RUN cd biconvex_mpc/build && make install -j16
 
 RUN echo 'export PYTHONPATH=/biconvex_mpc/build:$PYTHONPATH' >> /root/.bashrc
 
+# Downgrade numpy
+RUN python3 -m pip install "numpy<2.0.0"
+
 ENV DEBIAN_FRONTEND=noninteractive
 # nvidia-container-runtime
 ENV NVIDIA_VISIBLE_DEVICES \
