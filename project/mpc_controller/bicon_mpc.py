@@ -4,7 +4,7 @@ from mujoco._structs import MjData
 
 from mpc_controller.cyclic_gait_gen import CyclicQuadrupedGaitGen
 from mpc_controller.robot_id_controller import InverseDynamicsController
-from motions.weight_abstract import BiconvexMotionParams
+from mpc_controller.motions.weight_abstract import BiconvexMotionParams
 from mj_pin_wrapper.abstract.robot import RobotWrapperAbstract
 from mj_pin_wrapper.abstract.controller import ControllerAbstract
 

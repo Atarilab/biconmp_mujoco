@@ -3,82 +3,82 @@
 ## Date : 7/7/21
 
 import numpy as np
-from motions.weight_abstract import BiconvexMotionParams
+from mpc_controller.motions.weight_abstract import BiconvexMotionParams
 
 N_JOINTS = 12
 
-#### Trot #########################################
-trot = BiconvexMotionParams("go2", "Trot")
+#### Bound #########################################
+bound = BiconvexMotionParams("go2", "Bound")
 
 #########
 ######### Gait parameters
 #########
 
 # Gait horizon
-trot.gait_horizon = 1.2
+bound.gait_horizon = 1.5
 
 # Gait period (s)
-trot.gait_period = 0.5
+bound.gait_period = 0.3
 # Gait stance percent [0,1] [FR, FL, RR, RL]
-trot.stance_percent = [0.6] * 4
+bound.stance_percent = [0.5] * 4
 # Gait dt
-trot.gait_dt = 0.05
+bound.gait_dt = 0.05
 # Gait offset between legs [0,1] [FR, FL, RR, RL]
-trot.phase_offset = [0., 0.5, 0.5, 0.]
+bound.phase_offset = [0., 0., 0.5, 0.5]
 # Gait step height
-trot.step_ht = 0.1
+bound.step_ht = 0.05
 # Gait mean/nominal height
-trot.nom_ht = 0.32
+bound.nom_ht = 0.3
 
 # Gains toque controller
-trot.kp = 20.5
-trot.kd = 0.1
+bound.kp = 20.5
+bound.kd = 0.1
 
 # ADMM constraints violation norm
-trot.rho = 5e+4
+bound.rho = 5e+4
 
 #########
 ######### Kinematic solver
 #########
 
 ### State
-trot.state_wt = np.array(
+bound.state_wt = np.array(
     # position (x, y, z)
-    [0., 0., 10.] +
+    [0., 0., 1.0e3] +
     # orientation (r, p, y)                      
-    [1e2, 1e3, 1e2] +
+    [1.0e1, 1.0e1, 1.0e1] +
     # joint positions                    
-    [1.0] * N_JOINTS +
+    [50.0] * N_JOINTS +
     # linear velocities (x, y, z)                 
     [0., 0., 0.] +
     # anuglar velocities (x, y, z)                       
     [1e2, 1e2, 1e2] +
     # joint velocities          
-    [0.5]  * N_JOINTS                      
+    [5.5]  * N_JOINTS                      
     )
 
 ### Control
-trot.ctrl_wt = np.array(
+bound.ctrl_wt = np.array(
     # force (x, y, z)
-    [0., 0., 1e3] +
+    [0.5, 0.5, 1e3] +
     # moment at base (x, y, z)                    
-    [5e2, 5e2, 5e2] +
+    [1.0e0, 1.0e0, 1.0e0] +
     # torques                 
     [1.0] * N_JOINTS                      
     )
 
 ### Tracking swing end effectors (same for all end effectors swinging)
-trot.swing_wt = np.array(
-    # contact (x, y, z)
-    [1.1e4, 1.1e4, 2e3,] +
-    # swing (x, y, z)   
-    [5e3, 5e3, 1e4,]
+bound.swing_wt = np.array(
+    # position (x, y, z)
+    3*[1e4,] +
+    # velocities (x, y, z)                         
+    3*[1e4,]                                
     )
 
 ### Centroidal
-trot.cent_wt = np.array(
+bound.cent_wt = np.array(
     # center of mass (x, y, z)
-    3*[0.,] +
+    3*[5.0e1,] +
     # linear momentum of CoM (x, y, z)                            
     3*[5.0e2,] +
     # angular momentum around CoM (x, y, z)                             
@@ -86,9 +86,9 @@ trot.cent_wt = np.array(
     )
 
 ### Regularization, scale state_wt and ctrl_wt
-trot.reg_wt = [
-    5e-2,
-    1e-5
+bound.reg_wt = [
+    7e-3,
+    7e-5
     ]
 
 #########
@@ -96,7 +96,7 @@ trot.reg_wt = [
 #########
 
 ### State:
-trot.W_X = np.array(
+bound.W_X = np.array(
     # centroidal center of mass (x, y, z)
     [1e-5, 1e-5, 1e+5] +
     # linear momentum of CoM (x, y, z)                    
@@ -106,22 +106,22 @@ trot.W_X = np.array(
     )
 
 ### Terminal state:
-trot.W_X_ter = np.array(
+bound.W_X_ter = np.array(
     # centroidal center of mass (x, y, z)
-    [1e-4, 1e-4, 5e+5] +
+    [1e+6, 1e-4, 1e+6] +
     # linear momentum of CoM (x, y, z)                    
-    [1e+2, 1e+2, 1e+4] +
+    [1e+2, 1e+2, 2e+3] +
     # angular momentum around CoM (x, y, z)                    
-    [1e+5, 1e+5, 1e+5]                      
+    [1e+6, 1e+6, 1e+6]                      
     )
 
 ### Force on each end effectors
-trot.W_F = np.array(4*[1.0e1, 1.0e1, 1.0e1])
+bound.W_F = np.array(4*[1.0e1, 1.0e1, 1.0e1])
 
 # Maximum force to apply (will be multiplied by the robot weight)
-trot.f_max = np.array([0.4, 0.4, 1.5])
+bound.f_max = np.array([1., 1., 3.])
 
-trot.dyn_bound = np.array(3 * [0.45])
+bound.dyn_bound = np.array(3 * [0.45])
 
 ### Orientation correction (weights) modifies angular momentum
-trot.ori_correction = [0.3, 0.5, 0.4]
+bound.ori_correction = [0.3, 0.5, 0.4]

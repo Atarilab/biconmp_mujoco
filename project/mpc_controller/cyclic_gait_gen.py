@@ -11,7 +11,7 @@ from gait_planner_cpp import GaitPlanner
 from matplotlib import pyplot as plt
 
 from mj_pin_wrapper.abstract.robot import QuadrupedWrapperAbstract
-from motions.weight_abstract import BiconvexMotionParams
+from mpc_controller.motions.weight_abstract import BiconvexMotionParams
 
 class CyclicQuadrupedGaitGen:
     GRAVITY = 9.81

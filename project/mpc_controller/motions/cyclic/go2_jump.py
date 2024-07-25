@@ -3,7 +3,7 @@
 ## Date : 7/7/21
 
 import numpy as np
-from motions.weight_abstract import BiconvexMotionParams
+from mpc_controller.motions.weight_abstract import BiconvexMotionParams
 
 N_JOINTS = 12
 
