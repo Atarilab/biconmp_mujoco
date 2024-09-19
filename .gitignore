@@ -1,3 +1,6 @@
+data/*
+videos/*
+
 MUJOCO_LOG.TXT
 .vscode/
 
