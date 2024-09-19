@@ -1,6 +1,7 @@
 # TUM - MIRMI - ATARI lab
 # Victor DHEDIN, 2024
 
+import copy
 from typing import Any
 import numpy as np
 import time
@@ -25,8 +26,6 @@ class BiConMPC(ControllerAbstract):
         super().__init__(robot, **kwargs)
         
         self.robot = robot
-        self.nq = robot.nq
-        self.nv = robot.nv
         
         # Optional arguments
         self.optionals = {
@@ -49,6 +48,7 @@ class BiConMPC(ControllerAbstract):
         # Desired contact plan [H, Neef, 3]
         self.contact_plan_des = []
         self.full_length_contact_plan = []
+        self.mpc_cnt_plan_w = []
         self.replanning = 0 # Replan contacts
         # True if MPC diverges
         self.diverged = False
@@ -68,29 +68,44 @@ class BiConMPC(ControllerAbstract):
         self.gait_period = 0.
        
         # Init plans
-        self.xs_plan = np.empty((3*self.horizon, self.nq + self.nv), dtype=np.float32)
-        self.us_plan = np.empty((3*self.horizon, self.nv), dtype=np.float32)
-        self.f_plan = np.empty((3*self.horizon, self.robot.ne*3), dtype=np.float32)
+        self.xs_plan = np.zeros((self.horizon, self.robot.nq + self.robot.nv), dtype=np.float32)
+        self.us_plan = np.zeros((self.horizon, self.robot.nv), dtype=np.float32)
+        self.f_plan = np.zeros((self.horizon, self.robot.ne*3), dtype=np.float32)
         
         self.set_command()
         
+    @staticmethod
+    def reinitialize_controller(controller: 'BiConMPC'):
+        """
+        Reinitialize the BiConMPC controller.
+        
+        Args:
+            controller (BiConMPC): The BiConMPC controller instance to reinitialize.
+        """
+        # Store the current configuration and parameters
+        kwargs = {k : v for k, v in controller.optionals.items()}
+        controller.robot.reset()
+        robot = copy.copy(controller.robot)
+        gait_params = copy.deepcopy(controller.gait_params)
+
+        # Reinitialize the controller
+        controller.__init__(robot, **kwargs)
+        
+        # Set the gait parameters again
+        controller.set_gait_params(gait_params)
+    
     def reset(self):
         """
         Reset controller.
         """
-        self.contact_plan_des = []
-        self.full_length_contact_plan = []
-        self.replanning = 0 # Replan contacts
-
-        # MPC timings parameters
-        self.sim_t = 0.0
-        self.index = 0
-        self.step = 0
-        self.pln_ctr = 0
-        self.horizon = int(self.replanning_time / self.sim_dt) # s
-        self.diverged = False
+        self.reinitialize_controller(self)
         
-        self.set_command()
+    def replan_contact(self) -> bool:
+        '''
+        True if contact has to be replanned
+        '''
+        m = int(self.gait_period / self.replanning_time)
+        return self.replanning % m == 0
         
     def set_command(self,
                     v_des: np.ndarray = np.zeros((3,)),
@@ -137,7 +152,7 @@ class BiConMPC(ControllerAbstract):
             gait_params (BiconvexMotionParams): Custom gait parameters. See BiconvexMotionParams.
         """
         self.gait_params = gait_params
-        self.gait_gen = CyclicQuadrupedGaitGen(self.robot, self.gait_params, self.replanning_time, self.height_offset)
+        self.gait_gen = CyclicQuadrupedGaitGen(self.robot, self.gait_params, self.replanning_time, self.height_offset, self.sim_dt)
         self.robot_id_ctrl.set_gains(self.gait_params.kp, self.gait_params.kd)
         self.gait_horizon = self.gait_gen.horizon
         self.gait_period = self.gait_gen.params.gait_period
@@ -147,7 +162,7 @@ class BiConMPC(ControllerAbstract):
         self.index += 1
         self.step += 1
         
-    def _check_if_diverged(self, plan):
+    def _contains_nan(self, plan) -> bool:
         """
         Check if plan contains nan values.
         """
@@ -177,14 +192,14 @@ class BiConMPC(ControllerAbstract):
                     axis=0
                 )
 
-            # Take the next horizon contact locations
-            mpc_contacts = self.full_length_contact_plan[self.replanning:self.replanning + 2 * self.gait_horizon]
+            # Take the next <horizon> contact locations
+            mpc_contacts = self.full_length_contact_plan[self.replanning: self.replanning + self.gait_horizon]
             # Update the desired velocity
-            i = (self.gait_horizon - 1) *  2
-            avg_position_next_cnt = np.mean(mpc_contacts[i], axis=0)
-            self.v_des = np.round((avg_position_next_cnt - q[:3]) / self.gait_period, 2)
-            self.v_des *= 1.25
-            self.v_des[-1] = 0.
+            i_next_jump = self.replanning + 2 * (self.gait_horizon - 2)
+            center_position_next_cnt = np.mean(self.full_length_contact_plan[i_next_jump], axis=0)
+            self.v_des = np.round((center_position_next_cnt - q[:3]) / self.gait_period, 2)
+            # Scale velocity
+            self.v_des *= np.array([1.4, 2., 0.])
 
         self.replanning += 1
         return mpc_contacts
@@ -207,47 +222,50 @@ class BiConMPC(ControllerAbstract):
         """
         
         sim_t = round(robot_data.time, 3)
-
+        
         # Replanning
         if self.pln_ctr == 0:
             pr_st = time.time()
-            
+            self.robot.update(q, v)
+
+            # Contact plan in world frame
+            self.mpc_cnt_plan_w = self.get_desired_contacts(q, v)
             self.xs_plan, self.us_plan, self.f_plan = self.gait_gen.optimize(
                 q,
                 v,
                 sim_t,
                 self.v_des,
                 self.w_des,
-                cnt_plan_des=self.get_desired_contacts(q, v))
+                cnt_plan_des=self.mpc_cnt_plan_w)
             
-            self.diverged = (self._check_if_diverged(self.xs_plan) or
-                             self._check_if_diverged(self.us_plan) or
-                             self._check_if_diverged(self.f_plan))
+            self.diverged = (self._contains_nan(self.xs_plan) or
+                             self._contains_nan(self.us_plan) or
+                             self._contains_nan(self.f_plan))
             
             pr_et = time.time() - pr_st
+            self.index = 0
         
         # Second loop onwards lag is taken into account
-        if (
-            self.step > 0 and
+        if (self.step > 0 and
             self.sim_opt_lag and
-            self.step > int(self.replanning_time/self.sim_dt) - 1
+            self.step >= int(self.replanning_time/self.sim_dt)
             ):
             lag = int((1/self.sim_dt)*(pr_et - pr_st))
             self.index = lag
+            
         # If no lag (self.lag < 0)
-        elif (
-            not self.sim_opt_lag and
-            self.pln_ctr == 0. and
-            self.step > int(self.replanning_time/self.sim_dt) - 1
-        ):
+        elif (not self.sim_opt_lag and
+              self.pln_ctr == 0 and
+              self.step >= int(self.replanning_time/self.sim_dt)
+              ):
             self.index = 0
 
         # Compute torques
         tau = self.robot_id_ctrl.id_joint_torques(
             q,
             v,
-            self.xs_plan[self.index][:self.nq].copy(),
-            self.xs_plan[self.index][self.nq:].copy(),
+            self.xs_plan[self.index][:self.robot.nq],
+            self.xs_plan[self.index][self.robot.nq:],
             self.us_plan[self.index],
             self.f_plan[self.index])
 

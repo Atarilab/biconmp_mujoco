@@ -23,6 +23,7 @@ class CyclicQuadrupedGaitGen:
                  gait_params: BiconvexMotionParams,
                  planning_time: float,
                  height_offset: float = 0.,
+                 sim_dt: float = 1.0e-3,
                  **kwargs,
                  ) -> None:
         """
@@ -38,7 +39,7 @@ class CyclicQuadrupedGaitGen:
         self.path_urdf = robot.path_urdf
         # Foot size
         self.foot_size = robot.foot_size
-        self.sim_dt = kwargs.get("sim_dt", CyclicQuadrupedGaitGen.DEFAULT_SIM_DT)
+        self.sim_dt = sim_dt
         self.cnt_offset = kwargs.get("cnt_offset", CyclicQuadrupedGaitGen.DEFAULT_CONTACT_OFFSET)
         
         # Update pin model
@@ -81,7 +82,7 @@ class CyclicQuadrupedGaitGen:
         # Init motion params
         self.update_gait_params(gait_params)
         
-        self.cnt_plan = np.empty((self.horizon, self.n_eeff, 1 + 3), dtype=np.float32)
+        self.cnt_plan = np.zeros((self.horizon, self.n_eeff, 1 + 3), dtype=np.float32)
         
         # To be compatible with old code
         self.height_map = None
@@ -117,15 +118,19 @@ class CyclicQuadrupedGaitGen:
         self.mp.set_rho(self.params.rho)
 
         # Set up constraints for Dynamics
-        self.bx, self.by, self.bz = self.params.dyn_bound[0], self.params.dyn_bound[1], self.params.dyn_bound[2]
-        self.params.f_max *= self.mass * CyclicQuadrupedGaitGen.GRAVITY
-        self.fx_max, self.fy_max, self.fz_max = self.params.f_max[0], self.params.f_max[1], self.params.f_max[2]
-
+        self.bx, self.by, self.bz = (self.params.dyn_bound[0],
+                                     self.params.dyn_bound[1],
+                                     self.params.dyn_bound[2])
+        
+        self.fx_max, self.fy_max, self.fz_max = np.split(
+            self.params.f_max * self.mass * CyclicQuadrupedGaitGen.GRAVITY,
+            3)
+        
         # --- Set up other variables ---        
         self.X_nom = np.zeros((9*self.horizon))
 
         # For interpolation (should be moved to the controller)
-        self.size = min(self.ik_horizon, int(self.planning_time/self.params.gait_dt) + 2)
+        self.size = min(self.ik_horizon, int(self.planning_time/self.params.gait_dt))
         if self.planning_time > self.params.gait_dt:
             self.size -= 1
 
@@ -230,7 +235,7 @@ class CyclicQuadrupedGaitGen:
             self.dt_arr[i] = dt
             
     def compute_raibert_contact_plan(self, q, v, t, v_des, w_des):
-        self._update_pin_data(q, v)
+        self.robot.update(q, v)
 
         com = np.round(pin.centerOfMass(self.robot.model, self.robot.data, q, v)[0:2], 3)
         z_height = pin.centerOfMass(self.robot.model, self.robot.data, q, v)[2] - self.height_offset
@@ -364,23 +369,21 @@ class CyclicQuadrupedGaitGen:
         # If custom contact plan is given
         if len(cnt_plan_des_world) >= self.horizon:
             for i in range(self.horizon):
+                
+                if i == 0:
+                    foot_pos_0 = self.robot.get_foot_pos_world()
+                    
                 for j in range(self.n_eeff):
                     b_pos_contact = b_T_W * cnt_plan_des_world[i][j]
                     b_pos_contact[-1] = cnt_plan_des_world[i][j][-1] + self.foot_size
-                    b_pos_next_contact = b_T_W * cnt_plan_des_world[self.horizon // 2 - 1][j]
-                    
+                    b_pos_next_contact = b_T_W * cnt_plan_des_world[self.horizon // 2][j]
+                
                     # First time step
                     if i == 0:
-                        # Contact
-                        if self.gait_planner.get_phase(time, j) == 1:
-                            self.cnt_plan[i][j][0] = 1
-                            self.cnt_plan[i][j][1:4] = self.robot.get_foot_pos_world()
+                        self.cnt_plan[i][j][1:4] = foot_pos_0[j]
+                        cnt = self.gait_planner.get_phase(time, j)
+                        self.cnt_plan[i][j][0] = cnt
 
-                        # No contact
-                        else:
-                            self.cnt_plan[i][j][0] = 0
-                            self.cnt_plan[i][j][1:4] = self.robot.get_foot_pos_world()
-                        
                     # Next time steps
                     else:
                         ft = time + i * self.params.gait_dt
@@ -404,10 +407,10 @@ class CyclicQuadrupedGaitGen:
                             phase_percent = self.gait_planner.get_percent_in_phase(ft, j)
                             self.swing_time[i][j] = 1
                             # From current to next contact
-                            self.cnt_plan[i][j][1:3] +=  (b_pos_next_contact - b_pos_contact)[:2] * (phase_percent)
-                            # Swnig height is a parabola
-                            self.cnt_plan[i][j][-1] += (self.params.step_ht) * (1. - (phase_percent - 0.45) ** 2)
-                            
+                            self.cnt_plan[i][j][1:3] +=  (b_pos_next_contact - b_pos_contact)[:2] * (phase_percent + 0.2)
+                            # Swing height is a parabola
+                            self.cnt_plan[i][j][-1] += (self.params.step_ht) * (1. - abs(phase_percent - 0.4))
+                
                 if i == 0:
                     dt = self.params.gait_dt - np.round(np.remainder(time,self.params.gait_dt),2)
                     if dt == 0:
@@ -518,7 +521,6 @@ class CyclicQuadrupedGaitGen:
 
         q_origin = copy.deepcopy(q)
         q_origin[:2] = 0.
-        
         if w_des != 0:
             ori_des = q[3:7]
         else:
@@ -530,13 +532,13 @@ class CyclicQuadrupedGaitGen:
             self.create_cnt_plan(q_origin, v, t, v_des, w_des)
         else:
             self.follow_contact_plan(q, t, cnt_plan_des)
-            
+
         # Creates costs for IK and Dynamics
         self.create_costs(q_origin, v, v_des, w_des, ori_des)
 
         # pinocchio complains otherwise 
         q = pin.normalize(self.robot.model, q_origin)
-        self.kd.optimize(q_origin, v, 100, 1)
+        self.kd.optimize(q_origin, v, 75, 1)
 
         # Results
         #com_opt = self.mp.return_opt_com()
@@ -548,14 +550,14 @@ class CyclicQuadrupedGaitGen:
         n_eff_3d = 3*self.n_eeff
         step_dt = int(self.dt_arr[0]/self.sim_dt)
         if not hasattr(self, "f_int"):
-            self.f_int = np.empty((self.size * step_dt, n_eff_3d), dtype=np.float32)
-            self.xs_int = np.empty((self.size * step_dt, self.robot.model.nv + self.robot.model.nq), dtype=np.float32)
-            self.us_int = np.empty((self.size * step_dt, len(us[0])), dtype=np.float32)
+            self.f_int  = np.zeros((self.size * step_dt, n_eff_3d), dtype=np.float32)
+            self.xs_int = np.zeros((self.size * step_dt, self.robot.model.nv + self.robot.model.nq), dtype=np.float32)
+            self.us_int = np.zeros((self.size * step_dt, len(us[0])), dtype=np.float32)
             #self.com_int = np.empty((self.size * step_dt, len(com_opt[0, :])), dtype=np.float32)
             #self.mom_int = np.empty((self.size * step_dt, len(mom_opt[0, :])), dtype=np.float32)
-        
+
         for i in range(self.size):
-            self.f_int[i * step_dt : (i+1) * step_dt, :] =  np.linspace(F_opt[i*n_eff_3d:n_eff_3d*(i+1)], F_opt[n_eff_3d*(i+1):n_eff_3d*(i+2)], step_dt, dtype=np.float32)
+            self.f_int[i * step_dt : (i+1) * step_dt, :]  =  np.linspace(F_opt[i*n_eff_3d:n_eff_3d*(i+1)], F_opt[n_eff_3d*(i+1):n_eff_3d*(i+2)], step_dt, dtype=np.float32)
             self.xs_int[i * step_dt : (i+1) * step_dt, :] =  np.linspace(xs[i], xs[i+1], step_dt, dtype=np.float32)
             self.us_int[i * step_dt : (i+1) * step_dt, :] =  np.linspace(us[i], us[i+1], step_dt, dtype=np.float32)
             #self.com_int[i * step_dt : (i+1) * step_dt, :] =  np.linspace(com_opt[i], com_opt[i+1], step_dt, dtype=np.float32)
